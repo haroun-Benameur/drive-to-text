@@ -9,13 +9,30 @@ from app.models import ExtractionMethod
 from tests.helpers import make_encrypted_pdf, make_text_pdf
 
 
+class _FakeOcr:
+    """Minimal OCR stand-in that is never actually called by these tests."""
+
+    def version(self) -> str:
+        return "fake"
+
+    def available_languages(self) -> list[str]:
+        return ["eng"]
+
+    def ocr_image(self, image, language: str) -> str:  # pragma: no cover
+        return ""
+
+
 def _extractor(**overrides) -> PdfExtractor:
     settings = Settings(
         cors_origins=["http://localhost:5173"],
         max_pdf_pages=overrides.pop("max_pdf_pages", 30),
+        # Set min_page_chars=0 so OCR fallback is never triggered in these
+        # native-text tests (make_text_pdf uses non-embedded fonts that pypdf
+        # can still extract, but pdfium+FakeOcr would return empty string).
+        min_page_chars=overrides.pop("min_page_chars", 0),
         **overrides,
     )
-    return PdfExtractor(settings)
+    return PdfExtractor(ocr=_FakeOcr(), settings=settings)
 
 
 # ---------------------------------------------------------------------------

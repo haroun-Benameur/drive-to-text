@@ -35,7 +35,9 @@ def test_health_status_code(client: TestClient) -> None:
 
 def test_health_payload(client: TestClient) -> None:
     data = client.get("/api/health").json()
-    assert data == {"status": "ok", "version": "0.1.0"}
+    assert data["status"] == "ok"
+    assert data["version"] == "0.1.0"
+    assert "tesseract" in data
 
 
 # ---------------------------------------------------------------------------
