@@ -9,23 +9,23 @@ interface Props {
 
 export function ExportButton({ batch }: Props) {
   const enabled = TERMINAL.has(batch.status)
-  const href = exportUrl(batch.id)
+  const href    = exportUrl(batch.id)
 
   if (!enabled) {
     return (
-      <button className="btn btn--outline" disabled aria-disabled="true">
-        Export JSON
+      <button className="btn btn--export" disabled aria-disabled="true">
+        <span aria-hidden="true">⬇</span> Export JSON
       </button>
     )
   }
 
   return (
     <a
-      className="btn btn--outline"
+      className="btn btn--export"
       href={href}
       download={`extraction-${batch.id}.json`}
     >
-      Export JSON
+      <span aria-hidden="true">⬇</span> Export JSON
     </a>
   )
 }
