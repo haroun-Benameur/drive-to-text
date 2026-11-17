@@ -1,0 +1,33 @@
+# Development environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Tests and tooling
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Config / secrets not needed inside the image
+.env
+.env.*
+!.env.example
+pyproject.toml
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.egg-info/
+htmlcov/
+.coverage

@@ -1,0 +1,21 @@
+# Dependencies (reinstalled inside the image)
+node_modules/
+
+# Build output (rebuilt inside the image)
+dist/
+
+# Dev tooling
+*.tsbuildinfo
+.vite/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
