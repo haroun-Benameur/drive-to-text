@@ -19,7 +19,8 @@ def _clear() -> None:
 
 
 def test_defaults() -> None:
-    s = Settings()
+    # Pass _env_file=None so a local .env does not pollute the defaults test.
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.google_api_key is None
     assert s.cors_origins == ["http://localhost:5173"]
     assert s.tesseract_cmd is None
