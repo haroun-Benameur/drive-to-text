@@ -22,10 +22,9 @@ export function FileTable({
 }: Props) {
   const headerRef = useRef<HTMLInputElement>(null)
 
-  const allSelected = files.length > 0 && selectedIds.size === files.length
+  const allSelected  = files.length > 0 && selectedIds.size === files.length
   const someSelected = selectedIds.size > 0 && !allSelected
 
-  // Set indeterminate through a ref (can't be set via JSX prop)
   useEffect(() => {
     if (headerRef.current) {
       headerRef.current.indeterminate = someSelected
@@ -34,20 +33,22 @@ export function FileTable({
 
   if (files.length === 0) {
     return (
-      <p className="empty-state">
-        No supported files found in this folder.
-      </p>
+      <div className="empty-state">
+        <div className="empty-state__icon">📭</div>
+        <p className="empty-state__text">No supported files (PDF, PNG, JPEG) found in this folder.</p>
+      </div>
     )
   }
 
-  // Build a lookup of batch items by file_id
   const itemByFileId = new Map(batch?.items.map(it => [it.file_id, it]) ?? [])
 
   return (
     <div>
-      <p className="selection-info" aria-live="polite">
-        {selectedIds.size} of {files.length} selected
-      </p>
+      <div className="table-toolbar">
+        <p className="table-toolbar__info" aria-live="polite">
+          {selectedIds.size} of {files.length} file{files.length !== 1 ? 's' : ''} selected
+        </p>
+      </div>
 
       <div className="table-scroll">
         <table className="file-table">
@@ -64,7 +65,6 @@ export function FileTable({
                   checked={allSelected}
                   onChange={e => onToggleAll(e.target.checked)}
                   disabled={batchRunning}
-                  aria-label="Select all files"
                 />
               </th>
               <th>Name</th>
@@ -75,43 +75,46 @@ export function FileTable({
           </thead>
           <tbody>
             {files.map(file => {
-              const item = itemByFileId.get(file.id)
+              const item    = itemByFileId.get(file.id)
+              const checked = selectedIds.has(file.id)
               return (
-                <tr key={file.id}>
+                <tr key={file.id} className={checked ? 'is-selected' : undefined}>
                   <td className="file-table__check">
-                    <label
-                      className="sr-only"
-                      htmlFor={`file-${file.id}`}
-                    >
+                    <label className="sr-only" htmlFor={`file-${file.id}`}>
                       Select {file.name}
                     </label>
                     <input
                       id={`file-${file.id}`}
                       type="checkbox"
-                      checked={selectedIds.has(file.id)}
+                      checked={checked}
                       onChange={() => onToggle(file.id)}
                       disabled={batchRunning}
-                      aria-label={`Select ${file.name}`}
                     />
                   </td>
-                  <td className="file-table__name">{file.name}</td>
                   <td>
-                    <span
-                      className={`badge badge--type badge--${file.kind}`}
-                    >
+                    <div className="file-table__name-cell">
+                      <span
+                        className={`file-table__file-icon file-table__file-icon--${file.kind}`}
+                        aria-hidden="true"
+                      >
+                        {file.kind === 'pdf' ? '📄' : '🖼'}
+                      </span>
+                      <span className="file-table__filename" title={file.name}>
+                        {file.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge badge--${file.kind}`}>
                       {file.kind === 'pdf' ? 'PDF' : 'Image'}
                     </span>
                   </td>
-                  <td className="file-table__size">
-                    {formatBytes(file.size_bytes)}
-                  </td>
+                  <td className="file-table__size">{formatBytes(file.size_bytes)}</td>
                   {batch && (
                     <td>
-                      {item ? (
-                        <StatusBadge status={item.status} />
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
+                      {item
+                        ? <StatusBadge status={item.status} />
+                        : <span className="text-muted">—</span>}
                     </td>
                   )}
                 </tr>

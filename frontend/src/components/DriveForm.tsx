@@ -26,11 +26,16 @@ export function DriveForm({ loading, error, onLoad }: Props) {
   }
 
   return (
-    <form className="drive-form" onSubmit={handleSubmit} noValidate>
+    <form onSubmit={handleSubmit} noValidate>
+      <p className="drive-form__hint">
+        <span>🔗</span>
+        Paste a public Google Drive folder URL — anyone with the link can view.
+      </p>
+
       <div className="drive-form__row">
         <div className="drive-form__field">
           <label htmlFor="folder-url" className="drive-form__label">
-            Google Drive folder URL
+            Folder URL
           </label>
           <input
             id="folder-url"
@@ -48,7 +53,7 @@ export function DriveForm({ loading, error, onLoad }: Props) {
 
         <div className="drive-form__field drive-form__field--narrow">
           <label htmlFor="ocr-language" className="drive-form__label">
-            Language
+            OCR Language
           </label>
           <select
             id="ocr-language"
@@ -70,18 +75,21 @@ export function DriveForm({ loading, error, onLoad }: Props) {
           className="btn btn--primary drive-form__btn"
           disabled={loading || !url.trim()}
         >
-          {loading ? 'Loading…' : 'Load files'}
+          {loading ? (
+            <><span aria-hidden="true">⏳</span> Loading…</>
+          ) : (
+            <><span aria-hidden="true">📂</span> Load files</>
+          )}
         </button>
       </div>
 
-      {/* aria-live so screen readers announce the error without focus move */}
       <div
         id="folder-url-error"
         className="drive-form__error"
         aria-live="polite"
         role="alert"
       >
-        {error ?? ''}
+        {error ? <><span aria-hidden="true">⚠</span> {error}</> : null}
       </div>
     </form>
   )
