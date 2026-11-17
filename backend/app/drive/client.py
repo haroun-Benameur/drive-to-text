@@ -1,11 +1,13 @@
 """Google Drive REST v3 client."""
 
 import logging
+import ssl
 import time as time_module
 from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
+import truststore
 
 from app.config import Settings
 from app.drive.url import is_valid_drive_id
@@ -13,6 +15,16 @@ from app.errors import AppError
 from app.models import DriveFile, DriveFileMeta
 
 logger = logging.getLogger(__name__)
+
+
+def _system_ssl_context() -> ssl.SSLContext:
+    """Return an SSL context that trusts the OS / Windows certificate store.
+
+    This is needed on machines where the corporate CA is registered in the
+    system store but not in Python's bundled ``certifi`` CA bundle.
+    """
+    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    return ctx
 
 # MIME types accepted for processing
 _PDF_MIME = "application/pdf"
@@ -115,7 +127,11 @@ class DriveClient:
             "follow_redirects": False,
         }
         if transport is not None:
+            # Test transport supplied — skip SSL context (no real network calls).
             client_kwargs["transport"] = transport
+        else:
+            # Use the OS certificate store so corporate / university CAs are trusted.
+            client_kwargs["verify"] = _system_ssl_context()
 
         self._client = httpx.Client(**client_kwargs)
 

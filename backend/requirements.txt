@@ -7,3 +7,4 @@ pypdf==7.1.0
 cryptography==50.0.2
 pytesseract==0.3.13
 pypdfium2==5.15.2
+truststore==0.10.5
