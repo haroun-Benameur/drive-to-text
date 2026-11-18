@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "exported_at": "2026-11-18T23:45:22.804235+00:00",
+  "batch_id": "13bf6ab86b134eed85a713171a5456be",
+  "language": "fra+eng",
+  "status": "completed_with_errors",
+  "counts": {
+    "pending": 0,
+    "processing": 0,
+    "done": 4,
+    "failed": 2
+  },
+  "items": [
+    {
+      "file_id": "1RAb59V8PcgZcTReeaACT-Wxe8eKbXxoe",
+      "filename": "01_native_fr.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 1752,
+      "status": "done",
+      "extraction_method": "pdf_text",
+      "engine": "pypdf 7.1.0",
+      "language": "fra+eng",
+      "page_count": 1,
+      "ocr_pages": 0,
+      "text": "Rapport de test numero 1\nCeci est un document de test pour le projet\nd'extraction de texte depuis Google Drive.\nLe texte est en francais, avec des accents :\nete, eleve, garcon, cafe, noel.\nMontant total : 1 250,00 TND\nDate : 15 novembre 2026\n",
+      "warnings": [],
+      "error": null,
+      "duration_ms": 1504
+    },
+    {
+      "file_id": "1J1plP71dHdaxZKUks8Hh9zJwQQA3qobb",
+      "filename": "02_scanned_en.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 85072,
+      "status": "done",
+      "extraction_method": "ocr",
+      "engine": "pypdf 7.1.0 + pdfium + tesseract 5.5.3.20260724",
+      "language": "fra+eng",
+      "page_count": 1,
+      "ocr_pages": 1,
+      "text": "Scanned document\n\nTest report number 2\n\nThis scanned PDF has no text layer.\nIt must be processed with OCR.\n\nInvoice 2026-0042\nTotal amount: 480.00 EUR\nThank you for your business.\n",
+      "warnings": [],
+      "error": null,
+      "duration_ms": 2172
+    },
+    {
+      "file_id": "1e_ymyJXySfilsKNXQoeH38JT2JBZfRik",
+      "filename": "03_facture_fr.png",
+      "mime_type": "image/png",
+      "size_bytes": 37198,
+      "status": "done",
+      "extraction_method": "ocr",
+      "engine": "tesseract 5.5.3.20260724",
+      "language": "fra+eng",
+      "page_count": 1,
+      "ocr_pages": 1,
+      "text": "Facture n 2026-017\n\nClient : Societe Exemple SARL\nMontant : 980,00 TND\nMerci de votre confiance.\n",
+      "warnings": [],
+      "error": null,
+      "duration_ms": 1447
+    },
+    {
+      "file_id": "1TLLfdRCiSJJ7H6HkJEBGc1Mi-LU9LHBP",
+      "filename": "04_meeting_notes_en.jpg",
+      "mime_type": "image/jpeg",
+      "size_bytes": 65588,
+      "status": "done",
+      "extraction_method": "ocr",
+      "engine": "tesseract 5.5.3.20260724",
+      "language": "fra+eng",
+      "page_count": 1,
+      "ocr_pages": 1,
+      "text": "Meeting notes\n\nProject: Drive-to-Text POC\nStatus: OCR pipeline ready\nNext step: batch export\n",
+      "warnings": [],
+      "error": null,
+      "duration_ms": 1470
+    },
+    {
+      "file_id": "1azW9rpVwy5EUEkUI-3rIofjCfTBzMZm-",
+      "filename": "05_corrupted.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 2009,
+      "status": "failed",
+      "extraction_method": null,
+      "engine": null,
+      "language": "fra+eng",
+      "page_count": null,
+      "ocr_pages": null,
+      "text": null,
+      "warnings": [],
+      "error": {
+        "code": "CORRUPTED_FILE",
+        "message": "The PDF could not be read."
+      },
+      "duration_ms": 1009
+    },
+    {
+      "file_id": "1Ug-IiMnU3w3t9qFBnOcMJSKDzElJQe6d",
+      "filename": "06_encrypted.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 764,
+      "status": "failed",
+      "extraction_method": null,
+      "engine": null,
+      "language": "fra+eng",
+      "page_count": null,
+      "ocr_pages": null,
+      "text": null,
+      "warnings": [],
+      "error": {
+        "code": "PDF_ENCRYPTED",
+        "message": "The PDF is password-protected."
+      },
+      "duration_ms": 1041
+    }
+  ]
+}
