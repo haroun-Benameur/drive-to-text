@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_ocr_engine
 from app.errors import AppError
 from app.main import create_app
+from app.models import OcrOutput
 
 
 class _FakeOcrAvailable:
@@ -15,10 +16,15 @@ class _FakeOcrAvailable:
     def available_languages(self) -> list[str]:
         return ["eng", "fra", "ara", "osd"]
 
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:  # pragma: no cover
+        return OcrOutput(text="", confidence=None, engine="tesseract 5.3.0")
+
     def ocr_image(
         self, image, language: str, timeout: float | None = None
     ) -> str:  # pragma: no cover
-        return ""
+        return self.recognize(image, language, timeout).text
 
 
 class _FakeOcrUnavailable:
@@ -28,10 +34,15 @@ class _FakeOcrUnavailable:
     def available_languages(self) -> list[str]:  # pragma: no cover
         raise AppError("OCR_ENGINE_UNAVAILABLE", "Tesseract not found.", 503)
 
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:  # pragma: no cover
+        return OcrOutput(text="", confidence=None, engine="tesseract missing")
+
     def ocr_image(
         self, image, language: str, timeout: float | None = None
     ) -> str:  # pragma: no cover
-        return ""
+        return self.recognize(image, language, timeout).text
 
 
 @pytest.fixture()

@@ -303,6 +303,7 @@ a:hover { color: var(--c-primary-h); text-decoration: underline; }
 .badge--failed     { background: var(--c-danger-lt);  color: var(--c-danger); }
 
 .badge--method { background: #EDE9FE; color: #5B21B6; }
+.badge--confidence { background: var(--c-surface-2); color: var(--c-text-2); }
 
 /* ── Drive form ───────────────────────────────────────── */
 .drive-form__hint {

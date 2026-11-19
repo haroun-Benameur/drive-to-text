@@ -15,6 +15,11 @@ from pypdf.errors import DependencyError
 
 from app.config import Settings
 from app.errors import AppError
+from app.extraction.ocr_policy import (
+    append_low_confidence_warning,
+    mean_confidence,
+    recognize_with_retry,
+)
 from app.models import ExtractionMethod, ExtractionResult
 
 if TYPE_CHECKING:
@@ -176,6 +181,7 @@ class PdfExtractor:
 
     def __init__(self, ocr: "OcrEngine", settings: Settings) -> None:
         self._ocr = ocr
+        self._settings = settings
         self._max_pages = settings.max_pdf_pages
         self._min_chars = settings.min_page_chars
         self._dpi = settings.ocr_render_dpi
@@ -203,6 +209,7 @@ class PdfExtractor:
 
         page_texts: list[str] = []
         ocr_pages = 0
+        ocr_scores: list[float | None] = []
         used_pdfium_text = False
         t_start = time.monotonic()
         scale = self._dpi / 72.0
@@ -245,11 +252,16 @@ class PdfExtractor:
                     else:
                         # OCR runs OUTSIDE the pdfium lock
                         ocr_timeout = min(self._ocr_timeout, remaining)
-                        ocr_text = self._ocr.ocr_image(
-                            pil_image, language, timeout=ocr_timeout
+                        ocr_output = recognize_with_retry(
+                            self._ocr,
+                            pil_image,
+                            language,
+                            self._settings,
+                            ocr_timeout,
                         )
-                        text = ocr_text
+                        text = ocr_output.text
                         ocr_pages += 1
+                        ocr_scores.append(ocr_output.confidence)
 
                 page_texts.append(text)
 
@@ -257,6 +269,11 @@ class PdfExtractor:
         alnum_total = sum(1 for ch in full_text if ch.isalnum())
         if alnum_total == 0:
             warnings.append("NO_TEXT_FOUND")
+
+        ocr_confidence = mean_confidence(ocr_scores) if ocr_pages else None
+        append_low_confidence_warning(
+            warnings, ocr_confidence, self._settings.ocr_min_confidence
+        )
 
         method = decide_method(len(page_texts), ocr_pages)
 
@@ -278,4 +295,5 @@ class PdfExtractor:
             page_count=total_pages,
             ocr_pages=ocr_pages,
             warnings=warnings,
+            ocr_confidence=ocr_confidence,
         )

@@ -265,6 +265,8 @@ are treated as `None` (useful for Docker Compose overrides).
 | `OCR_PAGE_TIMEOUT_S` | `60` | Tesseract timeout per page |
 | `MIN_PAGE_CHARS` | `25` | Alphanumeric threshold below which OCR fallback is used |
 | `OCR_RENDER_DPI` | `200` | DPI for pypdfium2 rasterisation before OCR |
+| `OCR_MIN_CONFIDENCE` | `60.0` | Word-confidence threshold (0–100) below which OCR is retried and flagged |
+| `OCR_RETRY_PREPROCESS` | `true` | Retry OCR once on a preprocessed image when the first pass is weak |
 | `BATCH_WORKERS` | `2` | Concurrent threads in the batch executor |
 | `BATCH_TTL_MINUTES` | `60` | Finished batches are purged after this many minutes |
 | `LOG_LEVEL` | `INFO` | Python logging level |

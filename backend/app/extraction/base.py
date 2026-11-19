@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from PIL import Image
 
-from app.models import ExtractionResult
+from app.models import ExtractionResult, OcrOutput
 
 
 @runtime_checkable
@@ -20,13 +20,22 @@ class Extractor(Protocol):
 class OcrEngine(Protocol):
     """Run OCR on a single PIL image."""
 
-    def ocr_image(
-        self, image: Image.Image, language: str, timeout: float | None = None
-    ) -> str:
-        """Return the OCR text for *image*.
+    def recognize(
+        self,
+        image: Image.Image,
+        language: str,
+        timeout: float | None = None,
+    ) -> OcrOutput:
+        """Return text, confidence, and engine name for *image*.
 
         When *timeout* is given it overrides the engine's default page timeout.
         """
+        ...
+
+    def ocr_image(
+        self, image: Image.Image, language: str, timeout: float | None = None
+    ) -> str:
+        """Return the OCR text for *image*."""
         ...
 
     def version(self) -> str:

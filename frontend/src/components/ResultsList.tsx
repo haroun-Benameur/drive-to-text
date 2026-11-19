@@ -8,6 +8,12 @@ const METHOD_LABELS: Record<ExtractionMethod, string> = {
   'pdf_text+ocr': 'PDF parser + OCR',
 }
 
+function formatConfidence(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  const shown = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `OCR confidence ${shown}%`
+}
+
 function formatDuration(ms: number | null): string {
   if (ms === null) return ''
   if (ms < 1000) return `${ms} ms`
@@ -74,6 +80,11 @@ function ItemDetail({ item }: { item: BatchItem }) {
           <StatusBadge status={item.status} />
           {method && (
             <span className="badge badge--method">{METHOD_LABELS[method]}</span>
+          )}
+          {item.ocr_confidence != null && (
+            <span className="badge badge--confidence">
+              {formatConfidence(item.ocr_confidence)}
+            </span>
           )}
           {duration && (
             <span className="result-item__duration">{duration}</span>

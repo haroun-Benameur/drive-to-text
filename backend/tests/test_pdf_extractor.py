@@ -5,7 +5,7 @@ import pytest
 from app.config import Settings
 from app.errors import AppError
 from app.extraction.pdf import PdfExtractor
-from app.models import ExtractionMethod
+from app.models import ExtractionMethod, OcrOutput
 from tests.helpers import make_encrypted_pdf, make_text_pdf
 
 
@@ -18,10 +18,15 @@ class _FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng"]
 
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:  # pragma: no cover
+        return OcrOutput(text="", confidence=95.0, engine="tesseract fake")
+
     def ocr_image(
         self, image, language: str, timeout: float | None = None
     ) -> str:  # pragma: no cover
-        return ""
+        return self.recognize(image, language, timeout).text
 
 
 def _extractor(**overrides) -> PdfExtractor:

@@ -56,6 +56,14 @@ class ExtractionMethod(StrEnum):
     PDF_TEXT_OCR = "pdf_text+ocr"
 
 
+class OcrOutput(BaseModel):
+    """Text and confidence from one OCR call."""
+
+    text: str
+    confidence: float | None
+    engine: str
+
+
 class ExtractionResult(BaseModel):
     """Outcome of extracting text from a single file."""
 
@@ -65,6 +73,7 @@ class ExtractionResult(BaseModel):
     page_count: int | None
     ocr_pages: int
     warnings: list[str]
+    ocr_confidence: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +119,7 @@ class BatchItem(BaseModel):
     language: str
     page_count: int | None = None
     ocr_pages: int | None = None
+    ocr_confidence: float | None = None
     text: str | None = None
     warnings: list[str] = []
     error: ErrorInfo | None = None

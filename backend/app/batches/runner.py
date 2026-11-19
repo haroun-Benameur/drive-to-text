@@ -111,6 +111,7 @@ class BatchRunner:
                 engine=result.engine,
                 page_count=result.page_count,
                 ocr_pages=result.ocr_pages,
+                ocr_confidence=result.ocr_confidence,
                 text=result.text,
                 warnings=result.warnings,
                 duration_ms=duration_ms,

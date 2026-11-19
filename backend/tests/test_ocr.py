@@ -9,6 +9,7 @@ from app.config import Settings
 from app.errors import AppError
 from app.extraction.image import ImageExtractor
 from app.extraction.ocr import ALLOWED_LANGUAGES, TesseractOcr, validate_language
+from app.models import OcrOutput
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,11 +39,16 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:
+        self.calls.append((language,))
+        return OcrOutput(text=self._text, confidence=95.0, engine="tesseract fake-1.0")
+
     def ocr_image(
         self, image, language: str, timeout: float | None = None
     ) -> str:
-        self.calls.append((language,))
-        return self._text
+        return self.recognize(image, language, timeout).text
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ from PIL import Image
 from app.config import Settings
 from app.errors import AppError
 from app.extraction.pdf import PdfExtractor, decide_method, looks_like_garbage
-from app.models import ExtractionMethod
+from app.models import ExtractionMethod, OcrOutput
 from tests.helpers import make_text_pdf
 
 # ---------------------------------------------------------------------------
@@ -87,12 +87,17 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:
+        self.call_count += 1
+        self.timeouts.append(timeout)
+        return OcrOutput(text=self._text, confidence=95.0, engine="tesseract fake-5.0")
+
     def ocr_image(
         self, image, language: str, timeout: float | None = None
     ) -> str:
-        self.call_count += 1
-        self.timeouts.append(timeout)
-        return self._text
+        return self.recognize(image, language, timeout).text
 
 
 def _settings(**overrides) -> Settings:

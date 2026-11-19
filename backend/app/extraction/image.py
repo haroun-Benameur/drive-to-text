@@ -8,6 +8,10 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from app.config import Settings
 from app.errors import AppError
 from app.extraction.base import OcrEngine
+from app.extraction.ocr_policy import (
+    append_low_confidence_warning,
+    recognize_with_retry,
+)
 from app.models import ExtractionMethod, ExtractionResult
 
 
@@ -16,6 +20,7 @@ class ImageExtractor:
 
     def __init__(self, ocr: OcrEngine, settings: Settings) -> None:
         self._ocr = ocr
+        self._settings = settings
         self._max_pixels = settings.max_image_pixels
 
     def extract(self, data: bytes, language: str) -> ExtractionResult:
@@ -78,16 +83,22 @@ class ImageExtractor:
         image = ImageOps.exif_transpose(image)
         image = image.convert("RGB")
 
-        text = self._ocr.ocr_image(image, language)
+        output = recognize_with_retry(self._ocr, image, language, self._settings)
         result_warnings: list[str] = []
-        if not text.strip():
+        if not output.text.strip():
             result_warnings.append("NO_TEXT_FOUND")
+        append_low_confidence_warning(
+            result_warnings,
+            output.confidence,
+            self._settings.ocr_min_confidence,
+        )
 
         return ExtractionResult(
-            text=text,
+            text=output.text,
             method=ExtractionMethod.OCR,
             engine=f"tesseract {self._ocr.version()}",
             page_count=1,
             ocr_pages=1,
             warnings=result_warnings,
+            ocr_confidence=output.confidence,
         )
