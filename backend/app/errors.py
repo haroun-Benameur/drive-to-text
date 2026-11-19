@@ -1,12 +1,28 @@
 """Application error classes and exception handlers."""
 
 import logging
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
+
+
+
+def safe_text(value: str, limit: int = 40) -> str:
+    """Strip control characters, collapse whitespace, truncate with ellipsis.
+
+    Use whenever user-supplied input is echoed back in an error message so
+    that newlines, control characters and long strings cannot be injected.
+    """
+    cleaned = re.sub(r"[\x00-\x1f\x7f]", " ", value)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > limit:
+        return cleaned[:limit] + "\u2026"
+    return cleaned
+
 
 
 class AppError(Exception):

@@ -11,7 +11,7 @@ import truststore
 
 from app.config import Settings
 from app.drive.url import is_valid_drive_id
-from app.errors import AppError
+from app.errors import AppError, safe_text
 from app.models import DriveFile, DriveFileMeta
 
 logger = logging.getLogger(__name__)
@@ -222,7 +222,7 @@ class DriveClient:
         if not is_valid_drive_id(file_id):
             raise AppError(
                 "INVALID_FILE_ID",
-                f"'{file_id}' is not a valid Drive file ID.",
+                f"'{safe_text(file_id)}' is not a valid Drive file ID.",
                 422,
             )
 

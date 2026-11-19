@@ -3,7 +3,7 @@
 import re
 from urllib.parse import parse_qs, urlparse
 
-from app.errors import AppError
+from app.errors import AppError, safe_text
 
 # Matches a valid Drive resource ID.
 DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,100}$")
@@ -74,7 +74,7 @@ def extract_folder_id(url: str) -> str:
         raw_id = folder_match.group(1)
         if not is_valid_drive_id(raw_id):
             raise _invalid(
-                f"Folder ID {raw_id!r} is not valid;"
+                f"Folder ID '{safe_text(raw_id)}' is not valid;"
                 " expected 10–100 alphanumeric, hyphen, or underscore characters."
             )
         return raw_id
@@ -88,7 +88,7 @@ def extract_folder_id(url: str) -> str:
         raw_id = ids[0]
         if not is_valid_drive_id(raw_id):
             raise _invalid(
-                f"Folder ID {raw_id!r} is not valid;"
+                f"Folder ID '{safe_text(raw_id)}' is not valid;"
                 " expected 10–100 alphanumeric, hyphen, or underscore characters."
             )
         return raw_id

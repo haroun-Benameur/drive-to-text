@@ -37,6 +37,7 @@ def test_defaults() -> None:
     assert s.ocr_render_dpi == 200
     assert s.batch_workers == 2
     assert s.batch_ttl_minutes == 60
+    assert s.max_active_batches == 4
     assert s.log_level == "INFO"
 
 
@@ -101,7 +102,7 @@ def test_blank_whitespace_becomes_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_settings() – caching and env override
+# get_settings() â€“ caching and env override
 # ---------------------------------------------------------------------------
 
 

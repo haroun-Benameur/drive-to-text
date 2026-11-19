@@ -1,4 +1,10 @@
-"""Top-level API router."""
+"""Top-level API router.
+
+All route handlers are plain ``def`` (not ``async def``) so FastAPI dispatches
+them to its default thread-pool executor.  This prevents the synchronous httpx
+network calls and subprocess-based Tesseract invocations from blocking the
+event loop and stalling concurrent batch-status polling.
+"""
 
 from datetime import UTC, datetime
 
@@ -12,7 +18,7 @@ from app.batches.store import BatchStore
 from app.config import Settings, get_settings
 from app.drive.client import DriveClient
 from app.drive.url import extract_folder_id, is_valid_drive_id
-from app.errors import AppError
+from app.errors import AppError, safe_text
 from app.extraction.base import OcrEngine
 from app.extraction.ocr import validate_language
 from app.models import (
@@ -33,7 +39,7 @@ _REQUIRED_LANGUAGES = {"fra", "eng", "ara"}
 
 
 @router.get("/health")
-async def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
+def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
     """Return service liveness and Tesseract status."""
     tesseract: dict = {
         "available": False,
@@ -67,7 +73,7 @@ async def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
 
 
 @router.post("/drive/files", response_model=DriveFilesResponse)
-async def list_drive_files(
+def list_drive_files(
     body: DriveFilesRequest,
     client: DriveClient = Depends(get_drive_client),
 ) -> DriveFilesResponse:
@@ -83,7 +89,7 @@ async def list_drive_files(
 
 
 @router.post("/batches", status_code=202, response_model=Batch)
-async def create_batch(
+def create_batch(
     body: BatchCreateRequest,
     settings: Settings = Depends(get_settings),
     store: BatchStore = Depends(get_store),
@@ -102,10 +108,21 @@ async def create_batch(
         )
     for fid in body.file_ids:
         if not is_valid_drive_id(fid):
-            raise AppError("INVALID_FILE_ID", f"'{fid}' is not a valid Drive file ID.", 422)
+            raise AppError(
+                "INVALID_FILE_ID",
+                f"'{safe_text(fid)}' is not a valid Drive file ID.",
+                422,
+            )
 
     language = body.language or settings.default_ocr_language
     validate_language(language)
+
+    if store.count_active() >= settings.max_active_batches:
+        raise AppError(
+            "TOO_MANY_ACTIVE_BATCHES",
+            "Too many batches are running. Retry when one has finished.",
+            429,
+        )
 
     batch = store.create(body.file_ids, language)
     runner.start(batch.id, drive_client=drive_client, router=extraction_router)
@@ -113,7 +130,7 @@ async def create_batch(
 
 
 @router.get("/batches/{batch_id}", response_model=Batch)
-async def get_batch(
+def get_batch(
     batch_id: str,
     store: BatchStore = Depends(get_store),
 ) -> Batch:
@@ -122,7 +139,7 @@ async def get_batch(
 
 
 @router.get("/batches/{batch_id}/export")
-async def export_batch(
+def export_batch(
     batch_id: str,
     store: BatchStore = Depends(get_store),
 ) -> JSONResponse:

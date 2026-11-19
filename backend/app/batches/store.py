@@ -38,7 +38,7 @@ def _derive_batch_status(items: list[BatchItem], old_status: BatchStatus) -> Bat
     """Compute the batch status from item states."""
     statuses = {item.status for item in items}
 
-    # Any item still pending or processing → running
+    # Any item still pending or processing â†’ running
     if FileStatus.PENDING in statuses or FileStatus.PROCESSING in statuses:
         return BatchStatus.RUNNING
 
@@ -128,6 +128,17 @@ class BatchStore:
 
             return copy.deepcopy(batch)
 
+    def count_active(self) -> int:
+        """Return the number of batches that are not yet terminal.
+
+        A batch is active when its status is `queued` or `running`.
+        """
+        with self._lock:
+            return sum(
+                1
+                for b in self._batches.values()
+                if b.status not in (BatchStatus.COMPLETED, BatchStatus.COMPLETED_WITH_ERRORS)
+            )
     def purge_expired(self, ttl_minutes: int) -> None:
         """Remove batches older than *ttl_minutes* minutes.
 

@@ -4,6 +4,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Uncomment the next two lines on networks where apt HTTPS is intercepted:
+      # args:
+      #   APT_PROTOCOL: http
     # Load the developer .env (contains GOOGLE_API_KEY, CORS_ORIGINS, etc.).
     # No secrets appear in this file.
     env_file:

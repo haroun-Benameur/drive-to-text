@@ -1,10 +1,16 @@
 # ── Backend image ─────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
-# Install Tesseract and language packs, then clean up apt lists to keep
-# the image small. Use http:// to avoid corporate TLS interception on the
-# Debian apt mirrors.
-RUN sed -i 's|https://|http://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# APT_PROTOCOL defaults to https (standard).
+# Pass --build-arg APT_PROTOCOL=http only on networks with TLS-intercepting
+# proxies that break apt's HTTPS connections (e.g. some corporate networks).
+ARG APT_PROTOCOL=https
+RUN if [ "$APT_PROTOCOL" = "http" ]; then \
+      sed -i 's|https://|http://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
+    fi \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       tesseract-ocr \

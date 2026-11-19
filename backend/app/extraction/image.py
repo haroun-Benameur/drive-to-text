@@ -1,5 +1,6 @@
 """Image OCR extractor."""
 
+import warnings
 from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -18,44 +19,69 @@ class ImageExtractor:
         self._max_pixels = settings.max_image_pixels
 
     def extract(self, data: bytes, language: str) -> ExtractionResult:
-        """Return OCR text extracted from image *data*."""
-        # PIL's own limit can raise DecompressionBombError; override with ours
-        # by disabling the built-in guard first (we enforce our own below).
-        Image.MAX_IMAGE_PIXELS = None
+        """Return OCR text extracted from image *data*.
 
+        Strategy:
+        1. Open lazily (header only) — no pixel data decoded yet.
+        2. Check width × height against the limit BEFORE loading pixels.
+        3. Load inside a warnings context that turns DecompressionBombWarning
+           into an error so the check catches both Pillow's built-in threshold
+           AND any subsequent PIL operations that re-evaluate the limit.
+        4. Map every image-decode exception to a typed AppError.
+        """
+        # ── 1. Lazy open (reads header, not pixels) ───────────────────────────
         try:
+            # NOTE: do NOT set Image.MAX_IMAGE_PIXELS globally; leave it at the
+            # Pillow default so the warning mechanism remains active for other
+            # callers that may not go through this path.
             image = Image.open(BytesIO(data))
-            image.load()  # force decode so errors surface here
         except UnidentifiedImageError as exc:
             raise AppError(
                 "CORRUPTED_FILE", "The image could not be identified.", 422
             ) from exc
-        except Image.DecompressionBombError as exc:
+        except (OSError, SyntaxError, ValueError) as exc:
+            raise AppError(
+                "CORRUPTED_FILE", "The image file is corrupted or unreadable.", 422
+            ) from exc
+
+        # ── 2. Pixel-count guard BEFORE any decode ────────────────────────────
+        w, h = image.size
+        if w * h > self._max_pixels:
+            raise AppError(
+                "FILE_TOO_LARGE",
+                f"Image dimensions {w}×{h} = {w * h:,} pixels exceed"
+                f" the {self._max_pixels:,}-pixel limit.",
+                413,
+            )
+
+        # ── 3. Load pixels, treating DecompressionBombWarning as an error ─────
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                image.load()
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
             raise AppError(
                 "FILE_TOO_LARGE",
                 "Image exceeds the maximum allowed pixel count.",
                 413,
             ) from exc
-        except OSError as exc:
+        except UnidentifiedImageError as exc:
+            raise AppError(
+                "CORRUPTED_FILE", "The image could not be identified.", 422
+            ) from exc
+        except (OSError, SyntaxError, ValueError) as exc:
             raise AppError(
                 "CORRUPTED_FILE", "The image file is corrupted or unreadable.", 422
             ) from exc
 
-        w, h = image.size
-        if w * h > self._max_pixels:
-            raise AppError(
-                "FILE_TOO_LARGE",
-                f"Image dimensions {w}×{h} exceed the {self._max_pixels}-pixel limit.",
-                413,
-            )
-
+        # ── 4. Post-load transforms ───────────────────────────────────────────
         image = ImageOps.exif_transpose(image)
         image = image.convert("RGB")
 
         text = self._ocr.ocr_image(image, language)
-        warnings: list[str] = []
+        result_warnings: list[str] = []
         if not text.strip():
-            warnings.append("NO_TEXT_FOUND")
+            result_warnings.append("NO_TEXT_FOUND")
 
         return ExtractionResult(
             text=text,
@@ -63,5 +89,5 @@ class ImageExtractor:
             engine=f"tesseract {self._ocr.version()}",
             page_count=1,
             ocr_pages=1,
-            warnings=warnings,
+            warnings=result_warnings,
         )
