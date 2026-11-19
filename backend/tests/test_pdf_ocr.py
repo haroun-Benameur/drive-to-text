@@ -7,7 +7,7 @@ from PIL import Image
 
 from app.config import Settings
 from app.errors import AppError
-from app.extraction.pdf import PdfExtractor, decide_method
+from app.extraction.pdf import PdfExtractor, decide_method, looks_like_garbage
 from app.models import ExtractionMethod
 from tests.helpers import make_text_pdf
 
@@ -28,6 +28,46 @@ from tests.helpers import make_text_pdf
 )
 def test_decide_method(total: int, ocr: int, expected: ExtractionMethod) -> None:
     assert decide_method(total, ocr) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Le résumé français contient assez de lettres normales.", False),
+        ("هذا نص عربي واضح وليس رموزا تالفة أبدا", False),
+        ("\ufffd" * 50, True),
+        ("(cid:12)" * 4, True),
+        ("\ufffd" * 9, False),
+        ("Bonjour", False),
+        ("a" * 10 + "\t\n" * 20, False),
+        ("\x00" * 12, True),
+    ],
+)
+def test_looks_like_garbage(text: str, expected: bool) -> None:
+    assert looks_like_garbage(text) is expected
+
+
+def test_pdfium_text_used_when_pypdf_fails_or_returns_garbage() -> None:
+    """pdfium text replaces a failed or garbage pypdf page, without OCR."""
+    from unittest.mock import patch
+
+    sentence = "This page has plenty of selectable text to extract."
+    pdf = make_text_pdf([sentence, sentence])
+    fake = FakeOcr()
+    extractor = PdfExtractor(ocr=fake, settings=_settings(min_page_chars=5))
+
+    with patch("pypdf._page.PageObject.extract_text", side_effect=RuntimeError("boom")):
+        raised = extractor.extract(pdf, "eng")
+
+    with patch("pypdf._page.PageObject.extract_text", return_value="\ufffd" * 50):
+        garbage = extractor.extract(pdf, "eng")
+
+    for result in (raised, garbage):
+        assert "selectable" in result.text
+        assert result.warnings.count("PDFIUM_TEXT_FALLBACK") == 1
+        assert "pdfium" in result.engine
+        assert "tesseract" not in result.engine
+    assert fake.call_count == 0
 
 
 # ---------------------------------------------------------------------------
