@@ -36,11 +36,15 @@ class Settings(BaseSettings):
     # OCR quality
     min_page_chars: int = 25
     ocr_render_dpi: int = 200
+    ocr_min_confidence: float = 60.0
+    ocr_retry_preprocess: bool = True
+    ocr_engine: str = "tesseract"  # tesseract | easyocr | auto
 
     # Concurrency / retention
     batch_workers: int = 2
     batch_ttl_minutes: int = 60
     max_active_batches: int = 4
+    result_cache_size: int = 64
 
     # Logging
     log_level: str = "INFO"
@@ -56,6 +60,14 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v  # type: ignore[return-value]
+
+    @field_validator("ocr_min_confidence")
+    @classmethod
+    def _check_ocr_min_confidence(cls, v: float) -> float:
+        """Reject confidences outside the 0–100 range."""
+        if v < 0 or v > 100:
+            raise ValueError("ocr_min_confidence must be between 0 and 100")
+        return v
 
     @field_validator("google_api_key", "tesseract_cmd", "tessdata_prefix", mode="before")
     @classmethod

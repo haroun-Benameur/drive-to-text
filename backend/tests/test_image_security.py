@@ -8,6 +8,7 @@ from PIL import Image
 from app.config import Settings
 from app.errors import AppError
 from app.extraction.image import ImageExtractor
+from app.models import OcrOutput
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -33,9 +34,16 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng"]
 
-    def ocr_image(self, image: object, language: str) -> str:
+    def recognize(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> OcrOutput:
         FakeOcr.call_count += 1
-        return "text"
+        return OcrOutput(text="text", confidence=95.0, engine="tesseract fake")
+
+    def ocr_image(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> str:
+        return self.recognize(image, language, timeout).text
 
 
 def _png_bytes(width: int, height: int) -> bytes:

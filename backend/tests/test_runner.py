@@ -181,3 +181,27 @@ def test_file_too_large_sets_failed_with_file_too_large_code() -> None:
     assert item.status == FileStatus.FAILED
     assert item.error.code == "FILE_TOO_LARGE"
     runner.shutdown()
+
+
+def test_runner_stores_ocr_confidence() -> None:
+    class _ConfidenceRouter:
+        def extract(self, data: bytes, language: str) -> ExtractionResult:
+            return ExtractionResult(
+                text="extracted",
+                method=ExtractionMethod.OCR,
+                engine="tesseract fake",
+                page_count=1,
+                ocr_pages=1,
+                warnings=["LOW_OCR_CONFIDENCE"],
+                ocr_confidence=42.5,
+            )
+
+    store, runner = _make_runner(router=_ConfidenceRouter())
+    batch = store.create([_FILE_A], "eng")
+    runner.start(batch.id)
+    _wait_terminal(store, batch.id)
+
+    item = store.get(batch.id).items[0]
+    assert item.ocr_confidence == 42.5
+    assert item.warnings == ["LOW_OCR_CONFIDENCE"]
+    runner.shutdown()

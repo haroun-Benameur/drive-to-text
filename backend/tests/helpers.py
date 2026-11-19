@@ -5,6 +5,8 @@ from io import BytesIO
 from pypdf import PdfWriter
 from pypdf.generic import NameObject
 
+from app.models import OcrOutput
+
 
 def make_text_pdf(pages: list[str]) -> bytes:
     """Return a minimal valid PDF containing one text stream per page.
@@ -60,6 +62,52 @@ def make_text_pdf(pages: list[str]) -> bytes:
     buf = BytesIO()
     writer.write(buf)
     return buf.getvalue()
+
+
+class FakeOcr:
+    """OCR stand-in with a queue of scripted :class:`OcrOutput` values."""
+
+    def __init__(
+        self,
+        text: str = "OCR TEXT",
+        confidence: float | None = 95.0,
+        outputs: list[OcrOutput] | None = None,
+    ) -> None:
+        self._text = text
+        self._confidence = confidence
+        self._outputs = list(outputs or [])
+        self.call_count = 0
+        self.timeouts: list[float | None] = []
+        self.calls: list[tuple[str]] = []
+
+    def version(self) -> str:
+        """Return a fixed fake engine version."""
+        return "fake-5.0"
+
+    def available_languages(self) -> list[str]:
+        """Return the languages this fake claims to support."""
+        return ["eng", "fra"]
+
+    def recognize(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> OcrOutput:
+        """Return the next scripted output, or the default text and confidence."""
+        self.call_count += 1
+        self.timeouts.append(timeout)
+        self.calls.append((language,))
+        if self._outputs:
+            return self._outputs.pop(0)
+        return OcrOutput(
+            text=self._text,
+            confidence=self._confidence,
+            engine="tesseract fake-5.0",
+        )
+
+    def ocr_image(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> str:
+        """Return ``recognize(...).text``."""
+        return self.recognize(image, language, timeout).text
 
 
 def make_encrypted_pdf(password: str) -> bytes:

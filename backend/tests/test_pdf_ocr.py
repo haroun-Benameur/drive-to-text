@@ -7,8 +7,8 @@ from PIL import Image
 
 from app.config import Settings
 from app.errors import AppError
-from app.extraction.pdf import PdfExtractor, decide_method
-from app.models import ExtractionMethod
+from app.extraction.pdf import PdfExtractor, decide_method, looks_like_garbage
+from app.models import ExtractionMethod, OcrOutput
 from tests.helpers import make_text_pdf
 
 # ---------------------------------------------------------------------------
@@ -30,6 +30,46 @@ def test_decide_method(total: int, ocr: int, expected: ExtractionMethod) -> None
     assert decide_method(total, ocr) == expected
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Le résumé français contient assez de lettres normales.", False),
+        ("هذا نص عربي واضح وليس رموزا تالفة أبدا", False),
+        ("\ufffd" * 50, True),
+        ("(cid:12)" * 4, True),
+        ("\ufffd" * 9, False),
+        ("Bonjour", False),
+        ("a" * 10 + "\t\n" * 20, False),
+        ("\x00" * 12, True),
+    ],
+)
+def test_looks_like_garbage(text: str, expected: bool) -> None:
+    assert looks_like_garbage(text) is expected
+
+
+def test_pdfium_text_used_when_pypdf_fails_or_returns_garbage() -> None:
+    """pdfium text replaces a failed or garbage pypdf page, without OCR."""
+    from unittest.mock import patch
+
+    sentence = "This page has plenty of selectable text to extract."
+    pdf = make_text_pdf([sentence, sentence])
+    fake = FakeOcr()
+    extractor = PdfExtractor(ocr=fake, settings=_settings(min_page_chars=5))
+
+    with patch("pypdf._page.PageObject.extract_text", side_effect=RuntimeError("boom")):
+        raised = extractor.extract(pdf, "eng")
+
+    with patch("pypdf._page.PageObject.extract_text", return_value="\ufffd" * 50):
+        garbage = extractor.extract(pdf, "eng")
+
+    for result in (raised, garbage):
+        assert "selectable" in result.text
+        assert result.warnings.count("PDFIUM_TEXT_FALLBACK") == 1
+        assert "pdfium" in result.engine
+        assert "tesseract" not in result.engine
+    assert fake.call_count == 0
+
+
 # ---------------------------------------------------------------------------
 # FakeOcr
 # ---------------------------------------------------------------------------
@@ -39,6 +79,7 @@ class FakeOcr:
     def __init__(self, text: str = "OCR TEXT") -> None:
         self._text = text
         self.call_count = 0
+        self.timeouts: list[float | None] = []
 
     def version(self) -> str:
         return "fake-5.0"
@@ -46,9 +87,17 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
-    def ocr_image(self, image, language: str) -> str:
+    def recognize(
+        self, image, language: str, timeout: float | None = None
+    ) -> OcrOutput:
         self.call_count += 1
-        return self._text
+        self.timeouts.append(timeout)
+        return OcrOutput(text=self._text, confidence=95.0, engine="tesseract fake-5.0")
+
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:
+        return self.recognize(image, language, timeout).text
 
 
 def _settings(**overrides) -> Settings:
@@ -80,6 +129,75 @@ def _make_image_pdf() -> bytes:
     buf = io.BytesIO()
     img.save(buf, "PDF", resolution=200)
     return buf.getvalue()
+
+
+def _make_image_pdf_pages(page_count: int) -> bytes:
+    """Build an image-only PDF with *page_count* raster pages."""
+    pages = [Image.new("RGB", (200, 100), color="white") for _ in range(page_count)]
+    buf = io.BytesIO()
+    pages[0].save(
+        buf,
+        "PDF",
+        resolution=200,
+        save_all=True,
+        append_images=pages[1:],
+    )
+    return buf.getvalue()
+
+
+def test_image_pdf_opens_pdfium_once_and_ocr_each_page() -> None:
+    """A 3-page image PDF opens pdfium once and OCRs every page."""
+    import pypdfium2
+
+    opened = 0
+    real_document = pypdfium2.PdfDocument
+
+    def _counting_document(*args, **kwargs):
+        nonlocal opened
+        opened += 1
+        return real_document(*args, **kwargs)
+
+    fake = FakeOcr("page ocr")
+    pdf = _make_image_pdf_pages(3)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(pypdfium2, "PdfDocument", _counting_document)
+        result = PdfExtractor(
+            ocr=fake, settings=_settings(min_page_chars=1_000)
+        ).extract(pdf, "eng")
+
+    assert opened == 1
+    assert fake.call_count == 3
+    assert result.ocr_pages == 3
+
+
+def test_ocr_timeout_is_bounded_by_remaining_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OCR timeout is the lesser of the page timeout and the time left."""
+    budget = 10
+    elapsed = 4.0
+    t0 = 1_000.0
+    times = iter((t0, t0 + elapsed))
+
+    def _clock() -> float:
+        try:
+            return next(times)
+        except StopIteration:
+            return t0 + elapsed
+
+    monkeypatch.setattr("app.extraction.pdf.time.monotonic", _clock)
+    fake = FakeOcr("bounded")
+    PdfExtractor(
+        ocr=fake,
+        settings=_settings(
+            file_time_budget_s=budget,
+            ocr_page_timeout_s=60,
+            min_page_chars=1_000,
+        ),
+    ).extract(_make_image_pdf(), "eng")
+
+    remaining = budget - elapsed
+    assert fake.timeouts == [min(60, remaining)]
+    assert fake.timeouts[0] is not None
+    assert fake.timeouts[0] <= remaining
 
 
 def test_image_pdf_uses_ocr_fallback() -> None:

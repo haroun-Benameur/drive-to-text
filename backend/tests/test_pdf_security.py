@@ -10,6 +10,7 @@ from pypdf import PdfWriter
 from app.config import Settings
 from app.errors import AppError
 from app.extraction.pdf import PdfExtractor
+from app.models import OcrOutput
 from tests.helpers import make_encrypted_pdf, make_text_pdf
 
 # ---------------------------------------------------------------------------
@@ -30,9 +31,16 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
-    def ocr_image(self, image: object, language: str) -> str:
+    def recognize(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> OcrOutput:
         self.call_count += 1
-        return self._text
+        return OcrOutput(text=self._text, confidence=95.0, engine="tesseract fake-5.0")
+
+    def ocr_image(
+        self, image: object, language: str, timeout: float | None = None
+    ) -> str:
+        return self.recognize(image, language, timeout).text
 
 
 def _settings(**overrides) -> Settings:

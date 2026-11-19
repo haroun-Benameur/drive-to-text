@@ -47,6 +47,7 @@ export interface BatchItem {
   language: string
   page_count: number | null
   ocr_pages: number | null
+  ocr_confidence: number | null
   text: string | null
   warnings: string[]
   error: ErrorInfo | null

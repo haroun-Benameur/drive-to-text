@@ -1,6 +1,7 @@
 """Google Drive REST v3 client."""
 
 import logging
+import random
 import ssl
 import time as time_module
 from collections.abc import Callable
@@ -18,19 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 def _system_ssl_context() -> ssl.SSLContext:
-    """Return an SSL context that trusts the OS / Windows certificate store.
-
-    This is needed on machines where the corporate CA is registered in the
-    system store but not in Python's bundled ``certifi`` CA bundle.
-    """
+    """Return an SSL context that trusts the OS / Windows certificate store."""
     ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     return ctx
 
-# MIME types accepted for processing
 _PDF_MIME = "application/pdf"
 _IMAGE_MIMES = {"image/png", "image/jpeg"}
 
-# Drive API query – only PDFs and supported images, not trashed
 _FILES_Q = (
     "trashed = false and ("
     "mimeType = 'application/pdf' or "
@@ -39,8 +34,13 @@ _FILES_Q = (
     ")"
 )
 
-# Backoff delays (seconds) for retryable errors; two retries.
 _BACKOFF = (0.5, 1.0)
+_RETRY_AFTER_CAP = 10.0
+
+# 403 reasons that are retryable (transient rate limits).
+_RETRYABLE_403_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
+# 403 reasons that mean quota exhausted — never retry.
+_NON_RETRYABLE_QUOTA_REASONS = {"dailyLimitExceeded", "downloadQuotaExceeded"}
 
 
 def _kind(mime_type: str) -> Literal["pdf", "image"]:
@@ -49,42 +49,42 @@ def _kind(mime_type: str) -> Literal["pdf", "image"]:
     return "image"
 
 
-def _map_error(
-    response: httpx.Response,
-    not_found_code: str = "FOLDER_NOT_FOUND_OR_PRIVATE",
-) -> AppError:
-    """Translate a Drive API error response into an :class:`AppError`.
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse Retry-After as integer seconds. Ignore HTTP-date form."""
+    if value is None:
+        return None
+    try:
+        return min(float(value), _RETRY_AFTER_CAP)
+    except (ValueError, TypeError):
+        return None
 
-    *not_found_code* is raised for 404 / generic 403 responses, so callers
-    that deal with individual files can pass ``"FILE_NOT_FOUND"``.
-    """
-    status = response.status_code
 
-    # Try to read the structured error from the JSON body.
-    reason: str = ""
+def _read_reason(response: httpx.Response) -> str:
+    """Extract the structured error reason from a Drive API response."""
     try:
         body: dict[str, Any] = response.json()
         errors = body.get("error", {}).get("errors", [])
         if errors:
-            reason = errors[0].get("reason", "")
+            return errors[0].get("reason", "")
     except Exception:
         pass
+    return ""
 
-    # Key invalid → treat as misconfiguration
+
+def _map_error(
+    response: httpx.Response,
+    not_found_code: str = "FOLDER_NOT_FOUND_OR_PRIVATE",
+) -> AppError:
+    """Translate a Drive API error response into an :class:`AppError`."""
+    status = response.status_code
+    reason = _read_reason(response)
+
     if reason == "keyInvalid":
         return AppError("DRIVE_NOT_CONFIGURED", "API key is invalid.", 500)
 
-    # Quota / rate-limit errors (various shapes)
-    quota_reasons = {
-        "rateLimitExceeded",
-        "userRateLimitExceeded",
-        "dailyLimitExceeded",
-        "downloadQuotaExceeded",
-    }
-    if status == 429 or (status == 403 and reason in quota_reasons):
+    if status == 429 or (status == 403 and reason in _NON_RETRYABLE_QUOTA_REASONS):
         return AppError("DRIVE_QUOTA", "Drive API quota exceeded.", 429)
 
-    # Folder not found or private (404 or generic 403)
     if status in (403, 404):
         return AppError(
             not_found_code,
@@ -92,11 +92,9 @@ def _map_error(
             404,
         )
 
-    # Server-side Drive errors
     if status >= 500:
         return AppError("DRIVE_UNAVAILABLE", "Drive API is unavailable.", 502)
 
-    # Fallback
     return AppError(
         "DRIVE_UNAVAILABLE",
         f"Unexpected Drive API response: {status}.",
@@ -105,7 +103,13 @@ def _map_error(
 
 
 def _is_retryable(response: httpx.Response) -> bool:
-    return response.status_code == 429 or response.status_code >= 500
+    """Return True for 429, 5xx, and 403 with transient rate-limit reasons."""
+    if response.status_code == 429 or response.status_code >= 500:
+        return True
+    if response.status_code == 403:
+        reason = _read_reason(response)
+        return reason in _RETRYABLE_403_REASONS
+    return False
 
 
 class DriveClient:
@@ -116,10 +120,12 @@ class DriveClient:
         settings: Settings,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time_module.sleep,
+        jitter: Callable[[], float] | None = None,
     ) -> None:
         self._key = settings.google_api_key
         self._max_listed = settings.max_listed_files
         self._sleep = sleep
+        self._jitter = jitter if jitter is not None else (lambda: random.uniform(0, 0.25))
 
         client_kwargs: dict[str, Any] = {
             "base_url": "https://www.googleapis.com/drive/v3",
@@ -127,10 +133,8 @@ class DriveClient:
             "follow_redirects": False,
         }
         if transport is not None:
-            # Test transport supplied — skip SSL context (no real network calls).
             client_kwargs["transport"] = transport
         else:
-            # Use the OS certificate store so corporate / university CAs are trusted.
             client_kwargs["verify"] = _system_ssl_context()
 
         self._client = httpx.Client(**client_kwargs)
@@ -153,17 +157,28 @@ class DriveClient:
         """GET *path* with retry on transient errors."""
         headers = self._headers()
         last_error: AppError | None = None
+        last_response: httpx.Response | None = None
 
-        for attempt, delay in enumerate([0.0] + list(_BACKOFF)):
-            if delay:
+        for attempt, backoff in enumerate([0.0] + list(_BACKOFF)):
+            if backoff:
+                # Compute delay: max(backoff, Retry-After) + jitter
+                retry_after = _parse_retry_after(
+                    last_response.headers.get("retry-after")
+                    if last_response is not None else None
+                )
+                base_delay = max(backoff, retry_after or 0)
+                delay = base_delay + self._jitter()
                 self._sleep(delay)
+
             response = self._client.get(path, params=params, headers=headers)
             if response.is_success:
                 return response
+
             err = _map_error(response, not_found_code)
             if not _is_retryable(response):
                 raise err
             last_error = err
+            last_response = response
             logger.warning(
                 "Drive API transient error (attempt %d): %s %s",
                 attempt + 1,
@@ -174,11 +189,7 @@ class DriveClient:
         raise last_error  # type: ignore[misc]
 
     def list_folder(self, folder_id: str) -> list[DriveFile]:
-        """Return all PDF/image files directly inside *folder_id*.
-
-        Pages through ``nextPageToken`` until exhausted or
-        :attr:`max_listed_files` is reached.
-        """
+        """Return all PDF/image files directly inside *folder_id*."""
         q = f"'{folder_id}' in parents and {_FILES_Q}"
         params: dict[str, Any] = {
             "q": q,
@@ -235,7 +246,7 @@ class DriveClient:
         response = self._get(
             f"/files/{file_id}",
             params={
-                "fields": "id,name,mimeType,size,trashed",
+                "fields": "id,name,mimeType,size,trashed,md5Checksum",
                 "supportsAllDrives": "true",
             },
             not_found_code="FILE_NOT_FOUND",
@@ -249,15 +260,11 @@ class DriveClient:
             name=data.get("name", ""),
             mime_type=data.get("mimeType", ""),
             size_bytes=int(raw_size) if raw_size is not None else None,
+            md5_checksum=data.get("md5Checksum"),
         )
 
     def download(self, file_id: str, max_bytes: int) -> bytes:
-        """Download the content of a Drive file, enforcing *max_bytes*.
-
-        Raises FILE_TOO_LARGE (413) if Content-Length exceeds the limit or
-        the streamed body grows beyond it.  Raises FILE_NOT_FOUND (404) for
-        missing files.
-        """
+        """Download the content of a Drive file, enforcing *max_bytes*."""
         self._validate_file_id(file_id)
         headers = self._headers()
         params: dict[str, Any] = {
@@ -269,11 +276,9 @@ class DriveClient:
             "GET", f"/files/{file_id}", params=params, headers=headers
         ) as response:
             if not response.is_success:
-                # Read enough of the body to parse a JSON error envelope.
                 response.read()
                 raise _map_error(response, not_found_code="FILE_NOT_FOUND")
 
-            # Reject early if the server advertises a size we cannot accept.
             content_length = response.headers.get("content-length")
             if content_length is not None and int(content_length) > max_bytes:
                 raise AppError(

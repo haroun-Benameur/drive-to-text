@@ -1,6 +1,7 @@
 """Tests for Settings and get_settings()."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 
@@ -35,15 +36,31 @@ def test_defaults() -> None:
     assert s.ocr_page_timeout_s == 60
     assert s.min_page_chars == 25
     assert s.ocr_render_dpi == 200
+    assert s.ocr_min_confidence == 60.0
+    assert s.ocr_retry_preprocess is True
+    assert s.ocr_engine == "tesseract"
     assert s.batch_workers == 2
     assert s.batch_ttl_minutes == 60
     assert s.max_active_batches == 4
+    assert s.result_cache_size == 64
     assert s.log_level == "INFO"
 
 
 # ---------------------------------------------------------------------------
 # Computed property
 # ---------------------------------------------------------------------------
+
+
+def test_ocr_min_confidence_rejects_out_of_range() -> None:
+    with pytest.raises(ValidationError):
+        Settings(ocr_min_confidence=101)
+    with pytest.raises(ValidationError):
+        Settings(ocr_min_confidence=-0.1)
+
+
+def test_ocr_min_confidence_accepts_bounds() -> None:
+    assert Settings(ocr_min_confidence=0).ocr_min_confidence == 0
+    assert Settings(ocr_min_confidence=100).ocr_min_confidence == 100
 
 
 def test_max_file_size_bytes() -> None:
