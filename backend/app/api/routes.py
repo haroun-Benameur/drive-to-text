@@ -1,4 +1,10 @@
-"""Top-level API router."""
+"""Top-level API router.
+
+All route handlers are plain ``def`` (not ``async def``) so FastAPI dispatches
+them to its default thread-pool executor.  This prevents the synchronous httpx
+network calls and subprocess-based Tesseract invocations from blocking the
+event loop and stalling concurrent batch-status polling.
+"""
 
 from datetime import UTC, datetime
 
@@ -33,7 +39,7 @@ _REQUIRED_LANGUAGES = {"fra", "eng", "ara"}
 
 
 @router.get("/health")
-async def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
+def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
     """Return service liveness and Tesseract status."""
     tesseract: dict = {
         "available": False,
@@ -67,7 +73,7 @@ async def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
 
 
 @router.post("/drive/files", response_model=DriveFilesResponse)
-async def list_drive_files(
+def list_drive_files(
     body: DriveFilesRequest,
     client: DriveClient = Depends(get_drive_client),
 ) -> DriveFilesResponse:
@@ -83,7 +89,7 @@ async def list_drive_files(
 
 
 @router.post("/batches", status_code=202, response_model=Batch)
-async def create_batch(
+def create_batch(
     body: BatchCreateRequest,
     settings: Settings = Depends(get_settings),
     store: BatchStore = Depends(get_store),
@@ -113,7 +119,7 @@ async def create_batch(
 
 
 @router.get("/batches/{batch_id}", response_model=Batch)
-async def get_batch(
+def get_batch(
     batch_id: str,
     store: BatchStore = Depends(get_store),
 ) -> Batch:
@@ -122,7 +128,7 @@ async def get_batch(
 
 
 @router.get("/batches/{batch_id}/export")
-async def export_batch(
+def export_batch(
     batch_id: str,
     store: BatchStore = Depends(get_store),
 ) -> JSONResponse:
