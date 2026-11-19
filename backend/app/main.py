@@ -20,13 +20,16 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     from app.api.deps import get_drive_client, get_router
+    from app.batches.cache import ResultCache
 
     store = BatchStore()
+    cache = ResultCache(settings.result_cache_size)
     runner = BatchRunner(
         store=store,
         drive_client_factory=get_drive_client,
         router_factory=get_router,
         settings=settings,
+        cache=cache,
     )
     app.state.store = store
     app.state.runner = runner

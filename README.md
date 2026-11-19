@@ -198,6 +198,8 @@ All error responses use the envelope:
 | `INVALID_LANGUAGE` | 422 | Language not in the allowed set |
 | `VALIDATION_ERROR` | 422 | Request body schema error |
 | `TOO_MANY_FILES` | 422 | Batch exceeds `MAX_FILES_PER_BATCH` |
+| `TOO_MANY_ACTIVE_BATCHES` | 429 | Too many batches running at once (`MAX_ACTIVE_BATCHES`) |
+| `OCR_LANGUAGE_UNSUPPORTED` | 422 | Language not supported by the selected OCR engine |
 | `FOLDER_NOT_FOUND_OR_PRIVATE` | 404 | Folder missing or not publicly shared |
 | `FILE_NOT_FOUND` | 404 | File missing or trashed |
 | `BATCH_NOT_FOUND` | 404 | Batch ID unknown or expired |
@@ -223,23 +225,44 @@ All error responses use the envelope:
    the PDF extractor.
 
 2. **PDF: native text first** — pypdf extracts selectable text from each page.
-   A page whose alphanumeric character count is below `MIN_PAGE_CHARS` (default
-   25) is treated as image-only and sent to the OCR fallback.
 
-3. **OCR fallback** — pypdfium2 renders the page at `OCR_RENDER_DPI` (default
-   200 DPI) and Tesseract reads the bitmap. Rendering is protected by a
-   module-level threading lock (pypdfium2 is not thread-safe).
+3. **Pdfium text fallback** — if pypdf raised an exception or the extracted
+   text looks like garbage (more than 30% replacement characters, `(cid:N)`
+   sequences, or control/private-use characters), the page is re-read with
+   pdfium's text extractor. When this fallback is used, the warning
+   `PDFIUM_TEXT_FALLBACK` is added and `pdfium` appears in the engine string.
 
-4. **Extraction method** reported per file:
+4. **OCR fallback** — a page whose alphanumeric character count is below
+   `MIN_PAGE_CHARS` (default 25) is rendered by pypdfium2 at `OCR_RENDER_DPI`
+   (default 200 DPI) and sent to Tesseract. Pdfium is opened once per file
+   (not per page). OCR runs outside the pdfium lock so it doesn't block other
+   threads. The OCR timeout is bounded by the remaining file time budget.
+
+5. **OCR confidence and retry** — each OCR call reports a mean word confidence
+   (0–100). When `OCR_RETRY_PREPROCESS` is true and the first pass is weak
+   (blank text or confidence below `OCR_MIN_CONFIDENCE`), the image is
+   preprocessed (grayscale, autocontrast, 2× upscale for small images) and
+   OCR is retried once. The better result is kept. When the final confidence
+   is below the threshold, the warning `LOW_OCR_CONFIDENCE` is added.
+
+6. **Optional second OCR engine** — set `OCR_ENGINE=auto` to use EasyOCR as a
+   fallback when Tesseract's confidence is low. EasyOCR is not installed by
+   default; see the Optional OCR engine section below.
+
+7. **Extraction method** reported per file:
    - `pdf_text` — all pages had sufficient native text, OCR never called.
    - `ocr` — every page went through OCR (including image files).
    - `pdf_text+ocr` — some pages were native, some were OCR'd.
 
-5. **Warnings** appended to each result:
+8. **Warnings** appended to each result:
    - `TRUNCATED` — file exceeded `MAX_PDF_PAGES` or `FILE_TIME_BUDGET_S`.
    - `NO_TEXT_FOUND` — extraction produced no alphanumeric characters.
-   - `PAGE_TOO_LARGE` — rendered pixel count exceeded `MAX_IMAGE_PIXELS`; that
-     page was skipped.
+   - `PAGE_TOO_LARGE` — rendered pixel count exceeded `MAX_IMAGE_PIXELS`.
+   - `PDFIUM_TEXT_FALLBACK` — pdfium text extraction was used instead of pypdf.
+   - `LOW_OCR_CONFIDENCE` — mean OCR confidence was below `OCR_MIN_CONFIDENCE`.
+   - `CACHE_HIT` — result was served from the in-memory cache (same file + language + settings).
+   - `SECONDARY_OCR_SKIPPED` — the secondary OCR engine was unavailable or
+     didn't support the requested language.
 
 ---
 
@@ -267,7 +290,10 @@ are treated as `None` (useful for Docker Compose overrides).
 | `OCR_RENDER_DPI` | `200` | DPI for pypdfium2 rasterisation before OCR |
 | `OCR_MIN_CONFIDENCE` | `60.0` | Word-confidence threshold (0–100) below which OCR is retried and flagged |
 | `OCR_RETRY_PREPROCESS` | `true` | Retry OCR once on a preprocessed image when the first pass is weak |
+| `OCR_ENGINE` | `tesseract` | OCR engine: `tesseract`, `easyocr`, or `auto` (EasyOCR when installed) |
 | `BATCH_WORKERS` | `2` | Concurrent threads in the batch executor |
+| `MAX_ACTIVE_BATCHES` | `4` | Maximum concurrent batches (queued or running) |
+| `RESULT_CACHE_SIZE` | `64` | Cached extraction results (0 disables; keyed by file MD5 + language + settings) |
 | `BATCH_TTL_MINUTES` | `60` | Finished batches are purged after this many minutes |
 | `LOG_LEVEL` | `INFO` | Python logging level |
 
@@ -326,16 +352,99 @@ password-protected PDF. The export was downloaded via
 
 ---
 
+## Optional OCR engine (EasyOCR)
+
+EasyOCR is an optional second OCR engine. It is **not installed by default**
+and not required for the application to function.
+
+### Install
+
+```bash
+cd backend
+pip install -r requirements-optional.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+The `--extra-index-url` installs CPU-only PyTorch (smaller than the CUDA build).
+
+### Configuration
+
+Set `OCR_ENGINE` in `backend/.env`:
+
+| Value | Behaviour |
+|-------|-----------|
+| `tesseract` | Tesseract only (default) |
+| `easyocr` | EasyOCR only |
+| `auto` | Tesseract first; fall back to EasyOCR when confidence is below `OCR_MIN_CONFIDENCE` |
+
+When `auto` is set and EasyOCR is not installed, the application silently
+falls back to Tesseract only.
+
+### Language limits
+
+EasyOCR supports fewer language combinations than Tesseract:
+
+| Requested language | EasyOCR codes | Supported |
+|--------------------|---------------|-----------|
+| `fra` | `fr` | Yes |
+| `eng` | `en` | Yes |
+| `ara` | `ar, en` | Yes |
+| `fra+eng` | `fr, en` | Yes |
+| `fra+eng+ara` | — | No — raises `OCR_LANGUAGE_UNSUPPORTED` |
+
+### Docker
+
+```bash
+docker compose build --build-arg INSTALL_EASYOCR=true
+```
+
+### Licence
+
+EasyOCR and its dependencies (PyTorch, torchvision, numpy, opencv-python-headless,
+scipy, scikit-image) are listed in the "Optional OCR engine" section of
+[LICENSES.md](LICENSES.md). Model weights are marked "TO VERIFY upstream" —
+review them before redistributing a Docker image that includes EasyOCR.
+
+---
+
+## Known limits
+
+- **In-memory batches** — batch state is lost when the server restarts.
+  `BATCH_TTL_MINUTES` controls how long completed batches are kept.
+- **Single worker** — the `uvicorn` command uses `--workers 1` because the batch
+  store is in memory. Do not add workers without replacing the store.
+- **Non-recursive** — only files directly inside the given folder are listed;
+  sub-folders are not traversed.
+- **Shortcuts and resource-key links** — Google Drive shortcuts and URLs
+  containing `resourcekey=` are not supported.
+- **Arabic quality** — pypdf does not support right-to-left text reflow;
+  Tesseract Arabic accuracy depends heavily on font quality and scan resolution.
+- **Garbage text layers** — a scanned PDF with an embedded (possibly incorrect)
+  OCR text layer may still pass the `MIN_PAGE_CHARS` threshold. The pdfium text
+  fallback and garbage detection mitigate this, but are not perfect.
+- **Drive quotas** — the API key is subject to Google's default quota (10 000
+  requests/day for the Drive API). Heavy use may trigger `DRIVE_QUOTA` errors.
+- **Result cache is in-memory** — the cache is lost on restart. Set
+  `RESULT_CACHE_SIZE=0` to disable it.
+- **EasyOCR language limits** — `fra+eng+ara` is not supported by EasyOCR;
+  only Tesseract can handle it.
+
+---
+
 ## Next steps
 
-- Replace the in-memory batch store with a persistent queue (e.g. Redis + Celery
-  or a lightweight SQLite store) so batches survive restarts.
+- Replace the in-memory batch store and result cache with a persistent backend
+  (e.g. Redis + Celery or a lightweight SQLite store) so batches and cache
+  survive restarts.
 - Push real-time progress via Server-Sent Events instead of polling.
 - Add recursive folder traversal.
 - Use Tesseract OSD (orientation and script detection) to auto-rotate pages
   before OCR.
 - Apply a document-level pdfium fallback: if pypdf returns zero characters for
   the entire document, skip the per-page threshold and render everything.
+- Add OSD auto-rotation for EasyOCR as well.
+- Explore higher-quality models for EasyOCR or alternative engines (e.g.
+  PaddleOCR) for better Arabic support.
 
 ---
 

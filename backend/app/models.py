@@ -28,6 +28,7 @@ class DriveFileMeta(BaseModel):
     name: str
     mime_type: str
     size_bytes: int | None
+    md5_checksum: str | None = None
 
 
 class DriveFilesRequest(BaseModel):
@@ -62,6 +63,7 @@ class OcrOutput(BaseModel):
     text: str
     confidence: float | None
     engine: str
+    warnings: list[str] = []
 
 
 class ExtractionResult(BaseModel):

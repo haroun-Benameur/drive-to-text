@@ -7,7 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # APT_PROTOCOL defaults to https (standard).
 # Pass --build-arg APT_PROTOCOL=http only on networks with TLS-intercepting
 # proxies that break apt's HTTPS connections (e.g. some corporate networks).
+# ARG APT_PROTOCOL=https
 ARG APT_PROTOCOL=https
+# ARG INSTALL_EASYOCR=false
+ARG INSTALL_EASYOCR=false
 RUN if [ "$APT_PROTOCOL" = "http" ]; then \
       sed -i 's|https://|http://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     fi \
@@ -27,7 +30,16 @@ WORKDIR /app
 # Install Python dependencies before copying application code so the
 # dependency layer is cached even when source files change.
 COPY requirements.txt ./
+COPY requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install optional EasyOCR engine when INSTALL_EASYOCR=true.
+# Use the CPU-only PyTorch index to avoid the large CUDA build.
+RUN if [ "$INSTALL_EASYOCR" = "true" ]; then \
+      pip install --no-cache-dir \
+          --extra-index-url https://download.pytorch.org/whl/cpu \
+          -r requirements-optional.txt; \
+    fi
 
 # Copy application source.
 COPY app/ ./app/

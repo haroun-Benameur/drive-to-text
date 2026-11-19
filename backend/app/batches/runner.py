@@ -5,6 +5,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 
+from app.batches.cache import ResultCache
 from app.batches.store import BatchStore
 from app.config import Settings
 from app.errors import AppError
@@ -22,11 +23,13 @@ class BatchRunner:
         drive_client_factory: Callable,
         router_factory: Callable,
         settings: Settings,
+        cache: ResultCache | None = None,
     ) -> None:
         self._store = store
         self._drive_factory = drive_client_factory
         self._router_factory = router_factory
         self._settings = settings
+        self._cache = cache
         self._executor = ThreadPoolExecutor(max_workers=settings.batch_workers)
 
     # ------------------------------------------------------------------
@@ -34,11 +37,7 @@ class BatchRunner:
     # ------------------------------------------------------------------
 
     def start(self, batch_id: str, drive_client=None, router=None) -> None:
-        """Submit one task per pending item and return immediately.
-
-        *drive_client* and *router* override the factories when provided
-        (used in tests via FastAPI dependency injection).
-        """
+        """Submit one task per pending item and return immediately."""
         batch = self._store.get(batch_id)
         for item in batch.items:
             self._executor.submit(
@@ -69,7 +68,6 @@ class BatchRunner:
         No exception may escape this method.
         """
         t0 = perf_counter()
-        # Use injected overrides (from request context) when available.
         drive = drive_override if drive_override is not None else self._drive_factory()
         router = router_override if router_override is not None else self._router_factory()
         try:
@@ -95,12 +93,46 @@ class BatchRunner:
                     413,
                 )
 
-            # --- download ---
+            # --- cache check ---
             language = self._store.get(batch_id).language
+            md5 = getattr(meta, "md5_checksum", None)
+            if self._cache is not None and md5 is not None:
+                cached = self._cache.get(
+                    file_id, md5, language,
+                    self._settings, "ocr_engine",
+                )
+                if cached is not None:
+                    duration_ms = int((perf_counter() - t0) * 1000)
+                    warnings = list(cached.warnings)
+                    if "CACHE_HIT" not in warnings:
+                        warnings.append("CACHE_HIT")
+                    self._store.update_item(
+                        batch_id,
+                        file_id,
+                        status=FileStatus.DONE,
+                        extraction_method=cached.method,
+                        engine=cached.engine,
+                        page_count=cached.page_count,
+                        ocr_pages=cached.ocr_pages,
+                        ocr_confidence=cached.ocr_confidence,
+                        text=cached.text,
+                        warnings=warnings,
+                        duration_ms=duration_ms,
+                    )
+                    return
+
+            # --- download ---
             data = drive.download(file_id, max_bytes)
 
             # --- extract ---
             result = router.extract(data, language)
+
+            # --- cache store ---
+            if self._cache is not None and md5 is not None:
+                self._cache.put(
+                    file_id, md5, language,
+                    self._settings, "ocr_engine", result,
+                )
 
             duration_ms = int((perf_counter() - t0) * 1000)
             self._store.update_item(

@@ -19,7 +19,6 @@ from app.config import Settings, get_settings
 from app.drive.client import DriveClient
 from app.drive.url import extract_folder_id, is_valid_drive_id
 from app.errors import AppError, safe_text
-from app.extraction.base import OcrEngine
 from app.extraction.ocr import validate_language
 from app.models import (
     Batch,
@@ -39,7 +38,7 @@ _REQUIRED_LANGUAGES = {"fra", "eng", "ara"}
 
 
 @router.get("/health")
-def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
+def health(ocr: object = Depends(get_ocr_engine)) -> JSONResponse:
     """Return service liveness and Tesseract status."""
     tesseract: dict = {
         "available": False,
@@ -48,8 +47,8 @@ def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
         "missing_languages": sorted(_REQUIRED_LANGUAGES),
     }
     try:
-        ver = ocr.version()
-        langs = ocr.available_languages()
+        ver = ocr.version()  # type: ignore[attr-defined]
+        langs = ocr.available_languages()  # type: ignore[attr-defined]
         missing = sorted(_REQUIRED_LANGUAGES - set(langs))
         tesseract = {
             "available": True,
@@ -60,10 +59,22 @@ def health(ocr: OcrEngine = Depends(get_ocr_engine)) -> JSONResponse:
     except AppError:
         pass
 
+    # EasyOCR availability (optional)
+    easyocr_available = False
+    try:
+        import easyocr  # noqa: F401
+        easyocr_available = True
+    except ImportError:
+        pass
+
     return JSONResponse({
         "status": "ok",
         "version": "0.1.0",
         "tesseract": tesseract,
+        "ocr_engines": {
+            "tesseract": tesseract,
+            "easyocr": {"available": easyocr_available},
+        },
     })
 
 

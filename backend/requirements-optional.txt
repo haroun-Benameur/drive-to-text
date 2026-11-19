@@ -1,0 +1,9 @@
+# Optional OCR engine: EasyOCR
+# Install with:  pip install -r requirements-optional.txt
+#
+# For CPU-only PyTorch (smaller download):
+#   pip install -r requirements-optional.txt \
+#       --extra-index-url https://download.pytorch.org/whl/cpu
+#
+# Note: not installed in CI by default; not in requirements.txt.
+easyocr>=1.7.2

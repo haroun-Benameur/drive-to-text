@@ -38,11 +38,13 @@ class Settings(BaseSettings):
     ocr_render_dpi: int = 200
     ocr_min_confidence: float = 60.0
     ocr_retry_preprocess: bool = True
+    ocr_engine: str = "tesseract"  # tesseract | easyocr | auto
 
     # Concurrency / retention
     batch_workers: int = 2
     batch_ttl_minutes: int = 60
     max_active_batches: int = 4
+    result_cache_size: int = 64
 
     # Logging
     log_level: str = "INFO"

@@ -60,6 +60,7 @@ def _make_client(
         settings=settings or _settings(),
         transport=transport,
         sleep=sleep or (lambda _: None),
+        jitter=lambda: 0.0,  # deterministic delays in tests
     )
 
 
@@ -206,14 +207,15 @@ def test_403_forbidden_raises_folder_not_found() -> None:
 
 
 def test_403_quota_raises_drive_quota() -> None:
+    # dailyLimitExceeded is non-retryable and maps directly to DRIVE_QUOTA
     def handler(request: httpx.Request) -> httpx.Response:
         return _json_response(
             {
                 "error": {
                     "errors": [
                         {
-                            "reason": "rateLimitExceeded",
-                            "message": "rate limit",
+                            "reason": "dailyLimitExceeded",
+                            "message": "daily limit",
                         }
                     ]
                 }

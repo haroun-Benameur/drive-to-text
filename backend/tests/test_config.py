@@ -38,9 +38,11 @@ def test_defaults() -> None:
     assert s.ocr_render_dpi == 200
     assert s.ocr_min_confidence == 60.0
     assert s.ocr_retry_preprocess is True
+    assert s.ocr_engine == "tesseract"
     assert s.batch_workers == 2
     assert s.batch_ttl_minutes == 60
     assert s.max_active_batches == 4
+    assert s.result_cache_size == 64
     assert s.log_level == "INFO"
 
 
