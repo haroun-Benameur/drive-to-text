@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  # npm dependencies
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Docker (backend)
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  # Docker (frontend)
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly

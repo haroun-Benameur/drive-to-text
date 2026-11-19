@@ -18,7 +18,7 @@ from app.batches.store import BatchStore
 from app.config import Settings, get_settings
 from app.drive.client import DriveClient
 from app.drive.url import extract_folder_id, is_valid_drive_id
-from app.errors import AppError
+from app.errors import AppError, safe_text
 from app.extraction.base import OcrEngine
 from app.extraction.ocr import validate_language
 from app.models import (
@@ -108,10 +108,21 @@ def create_batch(
         )
     for fid in body.file_ids:
         if not is_valid_drive_id(fid):
-            raise AppError("INVALID_FILE_ID", f"'{fid}' is not a valid Drive file ID.", 422)
+            raise AppError(
+                "INVALID_FILE_ID",
+                f"'{safe_text(fid)}' is not a valid Drive file ID.",
+                422,
+            )
 
     language = body.language or settings.default_ocr_language
     validate_language(language)
+
+    if store.count_active() >= settings.max_active_batches:
+        raise AppError(
+            "TOO_MANY_ACTIVE_BATCHES",
+            "Too many batches are running. Retry when one has finished.",
+            429,
+        )
 
     batch = store.create(body.file_ids, language)
     runner.start(batch.id, drive_client=drive_client, router=extraction_router)

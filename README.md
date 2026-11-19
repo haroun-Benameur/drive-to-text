@@ -146,6 +146,12 @@ The compose file loads `backend/.env` via `env_file` and overrides
 `TESSERACT_CMD=""` and `TESSDATA_PREFIX=""` so the Windows paths in the local
 `.env` are ignored inside the container (Tesseract is on `PATH` in the image).
 
+> **Corporate / TLS-intercepting networks:** if `docker compose build` fails with apt SSL errors, pass the build arg:`
+> ```bash
+> docker compose build --build-arg APT_PROTOCOL=http
+> ```
+> This switches apt sources to HTTP for the build only. Do not use on networks without TLS interception.
+>
 > **Disk space:** the backend image downloads Tesseract and all Python wheels.
 > Ensure at least ~1 GB free on the Docker data drive before building.
 

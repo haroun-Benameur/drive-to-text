@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Google Drive
     google_api_key: str | None = None
 
-    # CORS – stored as a list; parsed from a comma-separated string
+    # CORS â€“ stored as a list; parsed from a comma-separated string
     cors_origins: list[str] = ["http://localhost:5173"]
 
     # Tesseract
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Concurrency / retention
     batch_workers: int = 2
     batch_ttl_minutes: int = 60
+    max_active_batches: int = 4
 
     # Logging
     log_level: str = "INFO"

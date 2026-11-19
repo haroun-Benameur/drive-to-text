@@ -8,7 +8,7 @@ from PIL import Image
 from pytesseract import TesseractNotFoundError
 
 from app.config import Settings
-from app.errors import AppError
+from app.errors import AppError, safe_text
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def validate_language(lang: str) -> str:
         allowed = ", ".join(sorted(ALLOWED_LANGUAGES))
         raise AppError(
             "INVALID_LANGUAGE",
-            f"Language {lang!r} is not supported. Allowed values: {allowed}.",
+            f"Language '{safe_text(lang)}' is not supported. Allowed values: {allowed}.",
             422,
         )
     return lang
