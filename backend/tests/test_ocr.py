@@ -38,7 +38,9 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
-    def ocr_image(self, image, language: str) -> str:
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:
         self.calls.append((language,))
         return self._text
 

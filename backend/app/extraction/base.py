@@ -20,8 +20,13 @@ class Extractor(Protocol):
 class OcrEngine(Protocol):
     """Run OCR on a single PIL image."""
 
-    def ocr_image(self, image: Image.Image, language: str) -> str:
-        """Return the OCR text for *image*."""
+    def ocr_image(
+        self, image: Image.Image, language: str, timeout: float | None = None
+    ) -> str:
+        """Return the OCR text for *image*.
+
+        When *timeout* is given it overrides the engine's default page timeout.
+        """
         ...
 
     def version(self) -> str:

@@ -18,7 +18,9 @@ class _FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng"]
 
-    def ocr_image(self, image, language: str) -> str:  # pragma: no cover
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:  # pragma: no cover
         return ""
 
 

@@ -15,7 +15,9 @@ class _FakeOcrAvailable:
     def available_languages(self) -> list[str]:
         return ["eng", "fra", "ara", "osd"]
 
-    def ocr_image(self, image, language: str) -> str:  # pragma: no cover
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:  # pragma: no cover
         return ""
 
 
@@ -26,7 +28,9 @@ class _FakeOcrUnavailable:
     def available_languages(self) -> list[str]:  # pragma: no cover
         raise AppError("OCR_ENGINE_UNAVAILABLE", "Tesseract not found.", 503)
 
-    def ocr_image(self, image, language: str) -> str:  # pragma: no cover
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:  # pragma: no cover
         return ""
 
 

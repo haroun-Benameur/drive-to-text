@@ -39,6 +39,7 @@ class FakeOcr:
     def __init__(self, text: str = "OCR TEXT") -> None:
         self._text = text
         self.call_count = 0
+        self.timeouts: list[float | None] = []
 
     def version(self) -> str:
         return "fake-5.0"
@@ -46,8 +47,11 @@ class FakeOcr:
     def available_languages(self) -> list[str]:
         return ["eng", "fra"]
 
-    def ocr_image(self, image, language: str) -> str:
+    def ocr_image(
+        self, image, language: str, timeout: float | None = None
+    ) -> str:
         self.call_count += 1
+        self.timeouts.append(timeout)
         return self._text
 
 
@@ -80,6 +84,75 @@ def _make_image_pdf() -> bytes:
     buf = io.BytesIO()
     img.save(buf, "PDF", resolution=200)
     return buf.getvalue()
+
+
+def _make_image_pdf_pages(page_count: int) -> bytes:
+    """Build an image-only PDF with *page_count* raster pages."""
+    pages = [Image.new("RGB", (200, 100), color="white") for _ in range(page_count)]
+    buf = io.BytesIO()
+    pages[0].save(
+        buf,
+        "PDF",
+        resolution=200,
+        save_all=True,
+        append_images=pages[1:],
+    )
+    return buf.getvalue()
+
+
+def test_image_pdf_opens_pdfium_once_and_ocr_each_page() -> None:
+    """A 3-page image PDF opens pdfium once and OCRs every page."""
+    import pypdfium2
+
+    opened = 0
+    real_document = pypdfium2.PdfDocument
+
+    def _counting_document(*args, **kwargs):
+        nonlocal opened
+        opened += 1
+        return real_document(*args, **kwargs)
+
+    fake = FakeOcr("page ocr")
+    pdf = _make_image_pdf_pages(3)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(pypdfium2, "PdfDocument", _counting_document)
+        result = PdfExtractor(
+            ocr=fake, settings=_settings(min_page_chars=1_000)
+        ).extract(pdf, "eng")
+
+    assert opened == 1
+    assert fake.call_count == 3
+    assert result.ocr_pages == 3
+
+
+def test_ocr_timeout_is_bounded_by_remaining_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OCR timeout is the lesser of the page timeout and the time left."""
+    budget = 10
+    elapsed = 4.0
+    t0 = 1_000.0
+    times = iter((t0, t0 + elapsed))
+
+    def _clock() -> float:
+        try:
+            return next(times)
+        except StopIteration:
+            return t0 + elapsed
+
+    monkeypatch.setattr("app.extraction.pdf.time.monotonic", _clock)
+    fake = FakeOcr("bounded")
+    PdfExtractor(
+        ocr=fake,
+        settings=_settings(
+            file_time_budget_s=budget,
+            ocr_page_timeout_s=60,
+            min_page_chars=1_000,
+        ),
+    ).extract(_make_image_pdf(), "eng")
+
+    remaining = budget - elapsed
+    assert fake.timeouts == [min(60, remaining)]
+    assert fake.timeouts[0] is not None
+    assert fake.timeouts[0] <= remaining
 
 
 def test_image_pdf_uses_ocr_fallback() -> None:

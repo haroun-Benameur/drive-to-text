@@ -65,11 +65,17 @@ class TesseractOcr:
                 503,
             ) from exc
 
-    def ocr_image(self, image: Image.Image, language: str) -> str:
-        """Return OCR text for *image* using *language*."""
+    def ocr_image(
+        self, image: Image.Image, language: str, timeout: float | None = None
+    ) -> str:
+        """Return OCR text for *image* using *language*.
+
+        When *timeout* is given it overrides the configured default.
+        """
+        effective_timeout = timeout if timeout is not None else self._timeout
         try:
             return pytesseract.image_to_string(
-                image, lang=language, timeout=self._timeout
+                image, lang=language, timeout=effective_timeout
             )
         except TesseractNotFoundError as exc:
             raise AppError(
